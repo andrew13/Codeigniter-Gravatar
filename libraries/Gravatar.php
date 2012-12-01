@@ -1,38 +1,19 @@
-<?php if ( ! defined('BASEPATH')) exit('No direct script access allowed'); // Remove line to use class outside of codeigniter
+<?php if( !defined( 'BASEPATH' ) ) exit( 'No direct script access allowed' ); // Remove line to use class outside of codeigniter
 /*
 * Gravatar library for use with codeigniter
-* 
-* @author Ryan Marshall <ryan@irealms.co.uk>
-* @link http://www.irealms.co.uk
+*
 * @package Codeigniter
 * @subpackage Gravatar
 *
 */
 
-class Gravatar {
-    
+class Gravatar
+{
+
     private $base_url = 'http://www.gravatar.com/';
     private $secure_base_url = 'https://secure.gravatar.com/';
 
-    /*
-     * Set the email to be used, converting it into an md5 hash as required by gravatar.com
-     * 
-     * @param string $email
-     * 
-     * @return string|null Email hash or if email didn't validate then return NULL
-     */
-    public function set_email($email)
-    {
-        $email = strtolower($email);
-        $email = trim($email);
-
-        if( ! filter_var($email, FILTER_VALIDATE_EMAIL) === FALSE)
-        {
-            return md5($email);
-        }
-
-        return NULL;
-    }
+    protected $_hash = null;
 
     /*
     * get_gravatar_url
@@ -46,40 +27,34 @@ class Gravatar {
     *
     * @return string gratavar url
     */
-    public function get_gravatar($email, $rating = NULL, $size = NULL, $default_image = NULL, $secure = NULL)
+    public function get_gravatar( $email, $rating = NULL, $size = NULL, $default_image = NULL, $secure = NULL )
     {
-        $hash = $this->set_email($email);
-        
-        if ($hash === NULL) 
-        {
-            // $hash has to be set to a value so the gravatar site can return a default image
-            $hash = 'invalid_email';
-        }
-        
+        $this->checkEmailAndSetHash( $email );
+
         $query_string = NULL;
         $options = array();
 
-        if ($rating !== NULL) 
+        if( $rating !== NULL )
         {
             $options['r'] = $rating;
         }
 
-        if ($size !== NULL) 
+        if( $size !== NULL )
         {
             $options['s'] = $size;
         }
 
-        if ($default_image !== NULL) 
+        if( $default_image !== NULL )
         {
             $options['d'] = $default_image;
         }
-        
-        if (count($options) > 0) 
+
+        if( count( $options ) > 0 )
         {
-            $query_string = '?'. http_build_query($options);
+            $query_string = '?' . http_build_query( $options );
         }
 
-        if ($secure !== NULL) 
+        if( $secure !== NULL )
         {
             $base = $this->secure_base_url;
         }
@@ -87,8 +62,8 @@ class Gravatar {
         {
             $base = $this->base_url;
         }
-        
-        return $base .'avatar/'. $hash . $query_string;
+
+        return $base . 'avatar/' . $this->getHash() . $query_string;
     }
 
     /*
@@ -99,62 +74,89 @@ class Gravatar {
      * 
      * @return object|null $xml->entry on success, NULL on an error
      */
-    public function get_profile($email, $fetch_method = 'file')
+    public function get_profile( $email, $fetch_method = 'file' )
     {
-        $hash = $this->set_email($email);
-        
-        if ($hash === NULL) 
+        $this->checkEmailAndSetHash( $email, NULL );
+
+        libxml_use_internal_errors( TRUE );
+
+        $str = '';
+
+        if( $fetch_method === 'file' )
         {
-            // A hash value of NULL will return no xml so the method returns NULL
-            return NULL;
-        }
-        
-        libxml_use_internal_errors(TRUE);
-        
-        if ($fetch_method === 'file') 
-        {
-            if (ini_get('allow_url_fopen') == FALSE) 
+            if( ini_get( 'allow_url_fopen' ) == FALSE )
             {
                 return NULL;
             }
 
-            $str = file_get_contents($this->base_url . $hash .'.xml');          
+            $str = file_get_contents( $this->base_url . $this->getHash() . '.xml' );
         }
 
-        if ($fetch_method === 'curl') 
+        if( $fetch_method === 'curl' )
         {
-            if ( ! function_exists('curl_init')) 
+            if( !function_exists( 'curl_init' ) )
             {
                 return NULL;
             }
-            
+
             $ch = curl_init();
             $options = array(
                 CURLOPT_RETURNTRANSFER => TRUE,
                 CURLOPT_POST => TRUE,
-                CURLOPT_URL => $this->secure_base_url . $hash .'.xml',
+                CURLOPT_URL => $this->secure_base_url . $this->getHash() . '.xml',
                 CURLOPT_TIMEOUT => 3
             );
-            curl_setopt_array($ch, $options);
-            $str = curl_exec($ch);  
+            curl_setopt_array( $ch, $options );
+            $str = curl_exec( $ch );
         }
-        
-        $xml = simplexml_load_string($str);
 
-        if ($xml === FALSE)
+        $xml = simplexml_load_string( $str );
+
+        if( $xml === FALSE )
         {
             $errors = array();
-            foreach(libxml_get_errors() as $error)
+            foreach( libxml_get_errors() as $error )
             {
-                $errors[] = $error->message.'\n';
+                $errors[] = $error->message . '\n';
             }
-            $error_string = implode('\n', $errors);
-            throw new Exception('Failed loading XML\n'. $error_string);
+            $error_string = implode( '\n', $errors );
+            throw new Exception( 'Failed loading XML\n' . $error_string );
         }
         else
         {
             return $xml->entry;
         }
+    }
+
+    /*
+     * Set the email to be used, converting it into an md5 hash as required by gravatar.com
+     *
+     * @param string $email
+     * @return string|null Email hash or if email didn't validate then return NULL
+     */
+    public function checkEmailAndSetHash( $email, $error = 'invalid_email' )
+    {
+        $email = strtolower( $email );
+        $email = trim( $email );
+
+        if( !filter_var( $email, FILTER_VALIDATE_EMAIL ) === FALSE )
+        {
+            $this->setHash( md5( $email ) );
+        }
+        else
+        {
+            $this->setHash( $error );
+        }
+    }
+
+    public function setHash( $hash )
+    {
+        $this->_hash = $hash;
+    }
+
+    public function getHash()
+    {
+        return $this->_hash;
     }
 }
 /* End of file Gravatar.php */
